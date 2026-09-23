@@ -1,0 +1,69 @@
+name: Setup APM
+description: Install the repository's configured APM version and create its GitHub App token
+
+inputs:
+  app-id:
+    description: GitHub App ID used to access private APM policy repositories
+    required: true
+  private-key:
+    description: GitHub App private key used to create the APM token
+    required: true
+  owner:
+    description: GitHub organization owning the APM policy/content repositories
+    required: false
+    default: kronostechnologies
+  repositories:
+    description: Comma-separated list of repositories the GitHub App token should be scoped to
+    required: false
+    default: agent-toolkit,.github-private
+  apm-version:
+    description: APM version to install. Defaults to the version pinned in the repository's .apm-version file
+    required: false
+    default: ''
+  working-directory:
+    description: Path where the repository's .apm-version file is located
+    required: false
+    default: "."
+
+outputs:
+  token:
+    description: GitHub token for APM policy access
+    value: ${{ steps.app-token.outputs.token }}
+  version:
+    description: APM version used in the repository
+    value: ${{ steps.apm-version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read APM version
+      id: apm-version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ -n "${{ inputs.apm-version }}" ]; then
+          echo "version=${{ inputs.apm-version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=$(cat .apm-version)" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create app token
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+
+    - name: Export environment variables
+      shell: bash
+      run: |
+        echo "::add-mask::${{ steps.app-token.outputs.token }}"
+        echo "GITHUB_APM_PAT=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
+
+    - name: Install APM
+      uses: microsoft/apm-action@d723bb64ed70c135bbaf87d126b721dd2dae0439 # v1.10.0
+      with:
+        apm-version: ${{ steps.apm-version.outputs.version }}
+        setup-only: 'true'
